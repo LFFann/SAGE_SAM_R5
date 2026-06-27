@@ -100,6 +100,7 @@ def test_r6_emergency_mode_disables_background_when_foreground_absent():
             "min_teacher_confidence": 0.5,
             "min_sam_confidence": 0.5,
             "disable_bg_if_no_fg": True,
+            "collapse_sentinel_enabled": False,
         },
     )
 
@@ -138,3 +139,41 @@ def test_r6_rank_negative_keeps_unreliable_pixels_useful_without_sam_veto():
     assert targets["candidate_set"][:, 1].any()
     assert targets["safe_negative_set"][:, 2].any()
     assert targets["stats"]["safe_negative_pixel_ratio"] > 0.0
+
+
+def test_r6_collapse_sentinel_blocks_background_takeover_and_forces_fg_candidates():
+    cal = PromptReliabilityCalibrator(3, min_pixels_per_class=1, use_soft_gate=True)
+    cal.teacher_q = torch.tensor([0.50, 0.50, 0.50])
+    cal.sam_q = torch.tensor([0.50, 0.50, 0.50])
+    teacher_prob = torch.full((1, 3, 10, 10), 0.01)
+    teacher_prob[:, 0] = 0.98
+    sam_prob = torch.full_like(teacher_prob, 0.01)
+    sam_prob[:, 0] = 0.98
+
+    targets = build_set_valued_targets(
+        {"mean_prob": teacher_prob},
+        {"valid": True, "sam_prob": sam_prob},
+        cal,
+        {
+            "_iteration": 1500,
+            "foreground_grounding_start": 800,
+            "disable_background_unsup_until": 800,
+            "foreground_classes": [1, 2],
+            "min_teacher_confidence": 0.5,
+            "min_sam_confidence": 0.5,
+            "disable_bg_if_no_fg": True,
+            "collapse_sentinel_enabled": True,
+            "collapse_min_fg_ratio_per_class": 0.05,
+            "collapse_force_fg_ratio_per_class": 0.05,
+            "collapse_max_background_hard_ratio": 0.20,
+            "collapse_disable_background_hard": True,
+        },
+    )
+
+    assert targets["stats"]["collapse_sentinel_active"] == 1.0
+    assert targets["stats"]["collapse_disabled_background"] == 1.0
+    assert targets["stats"]["background_hard_ratio"] == 0.0
+    assert targets["stats"]["collapse_forced_fg_ratio"] > 0.0
+    assert targets["candidate_set"][:, 0].sum() == 0
+    assert targets["candidate_set"][:, 1:].any()
+    assert targets["fuzzy_region"].any()

@@ -149,6 +149,13 @@ pseudo:
   max_background_hard_ratio: 0.70
   max_bg_to_fg_ratio: 4.0
   disable_bg_if_no_fg: true
+  collapse_sentinel_enabled: true
+  collapse_min_fg_ratio_per_class: 0.02
+  collapse_max_background_hard_ratio: 0.50
+  collapse_force_fg_ratio_per_class: 0.02
+  collapse_disable_background_hard: true
+  collapse_teacher_fallback_weight: 1.0
+  collapse_min_candidate_score: 0.0
   sam_foreground_low: 0.15
   sam_boundary_uncertain_threshold: 0.10
   sam_fuzzy_support_weight: 0.25

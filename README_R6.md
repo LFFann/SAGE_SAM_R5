@@ -7,7 +7,7 @@ R6 keeps the single-loop dual-fusion deploy student, but changes SAM's role. SAM
 ## Core Changes From R5
 
 - `r6/ssl/foreground_safe_target_builder.py`: builds calibrated candidate label sets. Empty candidates are not silently converted to background; weak foreground evidence is recovered as top-k foreground candidates or left ignored.
-- `r6/ssl/foreground_participation_controller.py`: enforces foreground participation, caps hard background supervision, and removes background candidates when emergency mode disables background hard CE.
+- `r6/ssl/foreground_participation_controller.py`: enforces foreground participation, caps hard background supervision, and uses a collapse sentinel to force foreground candidates while disabling background hard CE when foreground participation collapses.
 - `r6/losses/tri_state_pseudo_loss.py`: trains singleton sets, fuzzy candidate sets, rank separation, and U2PL-style probability-rank negative labels.
 - `r6/ssl/foreground_correlation_locality.py`: uses SAM/candidate foreground regions as propagation seeds and writes propagated foreground labels back into the candidate set before SSL losses.
 - `r6/engine/trainer.py`: SAM KD, SAM unsupervised consistency, relation, and locality use `sam_region_gate`, which includes candidate foreground, fuzzy, conflict, propagated, and uncertain boundary regions instead of only hard foreground seeds.
@@ -97,6 +97,9 @@ sam_foreground_support_ratio
 masked_locality_ratio
 foreground_masked_ratio
 emergency_mode
+collapse_sentinel_active
+collapse_disabled_background
+collapse_forced_fg_ratio
 ```
 
 R6 is healthy only if foreground participation remains nonzero after the grounding stage, `sam_train_gate_ratio` does not collapse to zero, and `background_hard_ratio` stays capped instead of saturating the unsupervised loss.
