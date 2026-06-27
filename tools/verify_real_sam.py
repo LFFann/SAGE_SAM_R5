@@ -11,8 +11,8 @@ ROOT = Path(__file__).resolve().parents[1]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
-from r5.models.real_sam_wrapper import RealSAMWrapper
-from r5.utils.io import load_yaml
+from r6.models.real_sam_wrapper import RealSAMWrapper
+from r6.utils.io import load_yaml
 
 
 def main():

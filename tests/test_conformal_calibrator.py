@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import torch
 
-from r5.calibration.class_conditional_conformal import ClassConditionalConformalCalibrator
+from r6.calibration.class_conditional_conformal import ClassConditionalConformalCalibrator
 
 
 def test_conformal_prediction_sets_and_shrink():

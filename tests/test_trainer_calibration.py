@@ -4,7 +4,7 @@ from itertools import cycle
 
 import torch
 
-from r5.engine.trainer import SAGESAMR5Trainer
+from r6.engine.trainer import SAGESAMR6Trainer
 
 
 class _FakeStudent:
@@ -46,7 +46,7 @@ class _FakeCalibrator:
 
 
 def test_prompt_calibrator_uses_calibration_split(tmp_path):
-    trainer = SAGESAMR5Trainer.__new__(SAGESAMR5Trainer)
+    trainer = SAGESAMR6Trainer.__new__(SAGESAMR6Trainer)
     trainer.use_sam = True
     trainer.mentor = _FakeMentor()
     trainer.student = _FakeStudent()
@@ -71,7 +71,7 @@ def test_prompt_calibrator_uses_calibration_split(tmp_path):
 
 
 def test_self_reliance_default_starts_at_seventy_percent():
-    trainer = SAGESAMR5Trainer.__new__(SAGESAMR5Trainer)
+    trainer = SAGESAMR6Trainer.__new__(SAGESAMR6Trainer)
     trainer.config = {"sam": {"self_reliance_decay": 0.5, "self_reliance_min_weight": 0.05}, "train": {"max_iterations": 100}}
 
     assert trainer._sam_self_reliance_scale(70) == 1.0

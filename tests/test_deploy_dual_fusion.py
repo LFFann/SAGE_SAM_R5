@@ -3,7 +3,7 @@ from __future__ import annotations
 import torch
 
 from Model.deploy_dual_fusion import DeployDualFusionSegmentor
-from r5.engine.model_factory import build_deploy_model
+from r6.engine.model_factory import build_deploy_model
 
 
 def test_dual_fusion_forward_returns_fusion_logits_and_branches():

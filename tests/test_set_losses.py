@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import torch
 
-from r5.losses.set_valued_losses import rank_margin_loss, safe_negative_loss, set_cross_entropy_loss, singleton_ce_loss
+from r6.losses.set_valued_losses import rank_margin_loss, safe_negative_loss, set_cross_entropy_loss, singleton_ce_loss
 
 
 def test_singleton_empty_mask_no_nan():

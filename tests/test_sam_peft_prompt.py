@@ -3,8 +3,8 @@ from __future__ import annotations
 import torch
 import torch.nn as nn
 
-from r5.models.real_sam_wrapper import RealSAMWrapper
-from r5.models.sam_peft import BlockWithAdapter, LoRALinear, SAMPEFTAdapter
+from r6.models.real_sam_wrapper import RealSAMWrapper
+from r6.models.sam_peft import BlockWithAdapter, LoRALinear, SAMPEFTAdapter
 
 
 class TinyBlock(nn.Module):
@@ -80,7 +80,7 @@ def test_local_prompt_preparation_uses_points_negative_points_and_boxes():
     nn.Module.__init__(wrapper)
     wrapper.device = torch.device("cpu")
     wrapper.image_size = 1024
-    wrapper.sam_source = "SAGE_SAM_R5/Model/sam:test"
+    wrapper.sam_source = "local Model/sam:test"
     wrapper.use_point_prompt = True
     wrapper.use_negative_points = True
     wrapper.use_box_prompt = True

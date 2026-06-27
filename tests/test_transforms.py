@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import torch
 
-from r5.data.transforms import strong_transform
+from r6.data.transforms import strong_transform
 
 
 def test_strong_transform_preserves_spatial_coordinates_without_patch():

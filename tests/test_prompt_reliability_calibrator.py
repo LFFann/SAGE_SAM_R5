@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import torch
 
-from r5.calibration.prompt_reliability_calibrator import PromptReliabilityCalibrator
+from r6.calibration.prompt_reliability_calibrator import PromptReliabilityCalibrator
 
 
 def test_prompt_reliability_uses_separate_sam_iou_threshold():

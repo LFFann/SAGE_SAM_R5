@@ -1,2 +1,2 @@
-"""Standalone SAGE-SAM R5 package."""
+"""Standalone SAGE-SAM R6 package."""
 

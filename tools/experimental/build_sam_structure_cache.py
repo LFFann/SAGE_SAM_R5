@@ -12,10 +12,10 @@ ROOT = Path(__file__).resolve().parents[2]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
-from r5.data.dataset_2d import SegmentationDataset2D, resolve_dataset_root
-from r5.models.real_sam_wrapper import RealSAMWrapper
-from r5.ssl.experimental_sparse_sam_relation_graph import build_topk_relation_graph
-from r5.utils.io import load_yaml
+from r6.data.dataset_2d import SegmentationDataset2D, resolve_dataset_root
+from r6.models.real_sam_wrapper import RealSAMWrapper
+from r6.ssl.experimental_sparse_sam_relation_graph import build_topk_relation_graph
+from r6.utils.io import load_yaml
 
 
 def main():
@@ -45,7 +45,7 @@ def main():
     )
     ds = SegmentationDataset2D(data_root, split, cfg["data"]["num_classes"], cfg["data"]["image_size"], cfg["data"].get("image_dir_name", "image"), cfg["data"].get("mask_dir_name", "mask"), has_mask=has_mask, ignore_index=cfg["data"].get("ignore_index", 255))
     loader = DataLoader(ds, batch_size=1, shuffle=False)
-    out_dir = Path(args.output_dir or sam_cfg.get("cache_dir", "./cache/SAGE_SAM_R5/experimental_structure_cache")) / args.split
+    out_dir = Path(args.output_dir or sam_cfg.get("cache_dir", "./cache/SAGE_SAM_R6/experimental_structure_cache")) / args.split
     out_dir.mkdir(parents=True, exist_ok=True)
     for batch in loader:
         sample_id = batch["id"][0].replace("/", "_").replace("\\", "_")

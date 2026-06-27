@@ -10,8 +10,8 @@ ROOT = Path(__file__).resolve().parent
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
-from r5.engine.checkpoint import export_deploy_payload, safe_load
-from r5.engine.model_factory import build_deploy_model, minimal_deploy_config
+from r6.engine.checkpoint import export_deploy_payload, safe_load
+from r6.engine.model_factory import build_deploy_model, minimal_deploy_config
 
 
 def main():

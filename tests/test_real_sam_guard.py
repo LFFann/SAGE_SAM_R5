@@ -3,8 +3,8 @@ from __future__ import annotations
 import pytest
 import torch
 
-from r5.models.real_sam_wrapper import RealSAMWrapper
-from r5.ssl.experimental_sparse_sam_relation_graph import build_topk_relation_graph
+from r6.models.real_sam_wrapper import RealSAMWrapper
+from r6.ssl.experimental_sparse_sam_relation_graph import build_topk_relation_graph
 
 
 def test_missing_sam_checkpoint_raises(tmp_path):

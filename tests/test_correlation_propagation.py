@@ -2,8 +2,8 @@ from __future__ import annotations
 
 import torch
 
-from r5.ssl.correlation_propagation import correlation_propagation_loss, propagate_correlation_targets
-from r5.ssl.foreground_correlation_locality import build_masked_locality_view
+from r6.ssl.correlation_propagation import correlation_propagation_loss, propagate_correlation_targets
+from r6.ssl.foreground_correlation_locality import build_masked_locality_view, expand_targets_with_correlation
 
 
 def test_correlation_propagation_returns_dense_training_signal():
@@ -64,3 +64,33 @@ def test_masked_locality_view_no_seed_is_noop():
 
     assert torch.equal(masked, image)
     assert stats["masked_locality_ratio"] == 0.0
+
+
+def test_correlation_expands_foreground_candidate_set():
+    candidate_set = torch.zeros(1, 3, 4, 4, dtype=torch.bool)
+    targets = {
+        "candidate_set": candidate_set,
+        "candidate_weight": torch.zeros(1, 4, 4),
+        "ambiguous_mask": torch.zeros(1, 4, 4, dtype=torch.bool),
+        "singleton_mask": torch.zeros(1, 4, 4, dtype=torch.bool),
+        "negative_set": torch.zeros(1, 3, 4, 4, dtype=torch.bool),
+        "conflict_mask": torch.zeros(1, 4, 4, dtype=torch.bool),
+        "teacher_only_soft_target": torch.full((1, 3, 4, 4), 1.0 / 3.0),
+        "sam_train_gate": torch.zeros(1, 4, 4, dtype=torch.bool),
+        "structure_gate": torch.zeros(1, 4, 4, dtype=torch.bool),
+        "sam_weight": torch.zeros(1, 4, 4),
+        "structure_weight": torch.zeros(1, 4, 4),
+        "stats": {},
+    }
+    propagated = {
+        "propagated_label": torch.ones(1, 4, 4, dtype=torch.long),
+        "propagated_weight": torch.ones(1, 4, 4),
+        "expanded_reliable_mask": torch.ones(1, 4, 4, dtype=torch.bool),
+    }
+
+    expanded = expand_targets_with_correlation(targets, propagated, min_weight=0.15)
+
+    assert expanded["candidate_set"][:, 1].all()
+    assert expanded["fuzzy_region"].any()
+    assert expanded["sam_region_gate"].any()
+    assert expanded["stats"]["foreground_propagated_ratio"] == 1.0

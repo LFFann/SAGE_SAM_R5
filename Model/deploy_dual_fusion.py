@@ -158,7 +158,7 @@ class HAMLite(nn.Module):
 
 
 class DeployDualFusionSegmentor(nn.Module):
-    """Deployable dual-view R5 model with fusion logits as the default output."""
+    """Deployable dual-view R6 model with fusion logits as the default output."""
 
     def __init__(
         self,

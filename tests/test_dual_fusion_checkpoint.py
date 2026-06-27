@@ -2,8 +2,8 @@ from __future__ import annotations
 
 import torch
 
-from r5.engine.checkpoint import export_deploy_payload, save_checkpoint, safe_load
-from r5.engine.model_factory import build_deploy_model, minimal_deploy_config
+from r6.engine.checkpoint import export_deploy_payload, save_checkpoint, safe_load
+from r6.engine.model_factory import build_deploy_model, minimal_deploy_config
 
 
 def test_dual_fusion_export_round_trip(tmp_path):
@@ -45,7 +45,7 @@ def test_dual_fusion_export_round_trip(tmp_path):
 
     out = loaded(torch.randn(1, 3, 32, 32))
 
-    assert payload["model_name"] == "SAGE_SAM_R5_DualFusionDeploy"
+    assert payload["model_name"] == "SAGE_SAM_R6_DualFusionDeploy"
     assert out.shape == (1, 3, 32, 32)
     assert not any(
         any(token in key.lower() for token in ("sam", "teacher", "mentor", "calibrator", "optimizer"))
