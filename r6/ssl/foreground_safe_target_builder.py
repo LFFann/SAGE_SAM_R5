@@ -128,11 +128,11 @@ def build_foreground_safe_targets(teacher_out: dict, sam_out: dict | None, calib
         support_boost = float(config.get("sam_fuzzy_support_weight", 0.25))
         fallback_score = torch.maximum(teacher_prob[:, 1:], sam_support[:, 1:] * support_boost)
         fallback_conf, _ = fallback_score.max(dim=1)
-        min_empty_fg = float(config.get("min_empty_foreground_score", 1e-6))
+        min_empty_fg = float(config.get("min_empty_foreground_score", config.get("min_foreground_score", 0.02)))
         empty_fg_fallback = empty_before_fallback & (fallback_conf >= min_empty_fg)
         topk_fg = _topk_foreground_candidates(
             fallback_score,
-            int(config.get("empty_candidate_topk_foreground", min(2, num_classes - 1))),
+            int(config.get("empty_candidate_topk_foreground", 1)),
         )
         candidate_set[:, 1:] = candidate_set[:, 1:] | (topk_fg & empty_fg_fallback.unsqueeze(1))
     has_fg_candidate = candidate_set[:, 1:].any(dim=1) if num_classes > 1 else torch.zeros_like(teacher_label, dtype=torch.bool)
@@ -155,15 +155,18 @@ def build_foreground_safe_targets(teacher_out: dict, sam_out: dict | None, calib
 
     negative_set = torch.zeros_like(candidate_set, dtype=torch.bool)
     rank_pos = _rank_positions(teacher_prob)
-    rank_low = int(config.get("safe_negative_rank_low", 1))
+    rank_low = int(config.get("safe_negative_rank_low", max(1, max_set)))
     rank_high = int(config.get("safe_negative_rank_high", num_classes - 1))
     negative_max_prob = float(config.get("safe_negative_max_prob", config.get("safe_negative_threshold", 0.40)))
+    sam_veto_threshold = float(config.get("safe_negative_sam_threshold", config.get("safe_negative_sam_veto_threshold", 0.30)))
     for cls in fg_classes:
+        weak_sam_veto = sam_support[:, cls] < sam_veto_threshold if sam_valid else torch.ones_like(candidate_set[:, cls], dtype=torch.bool)
         negative_set[:, cls] = (
             ~candidate_set[:, cls]
             & (rank_pos[:, cls] >= rank_low)
             & (rank_pos[:, cls] <= rank_high)
             & (teacher_prob[:, cls] <= negative_max_prob)
+            & weak_sam_veto
         )
     negative_mask = negative_set.any(dim=1) | conflict_mask
 

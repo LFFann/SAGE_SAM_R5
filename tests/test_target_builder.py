@@ -111,7 +111,7 @@ def test_r6_emergency_mode_disables_background_when_foreground_absent():
     assert targets["candidate_set"].sum() == 0
 
 
-def test_r6_rank_negative_keeps_unreliable_pixels_useful_without_sam_veto():
+def test_r6_rank_negative_keeps_unreliable_pixels_useful_with_weak_sam_veto():
     cal = PromptReliabilityCalibrator(3, min_pixels_per_class=1, use_soft_gate=True)
     teacher_prob = torch.tensor(
         [[
@@ -120,7 +120,9 @@ def test_r6_rank_negative_keeps_unreliable_pixels_useful_without_sam_veto():
             [[0.05, 0.05], [0.05, 0.05]],
         ]]
     )
-    sam_prob = torch.full_like(teacher_prob, 1.0 / 3.0)
+    sam_prob = torch.full_like(teacher_prob, 0.01)
+    sam_prob[:, 1] = 0.10
+    sam_prob[:, 2] = 0.02
 
     targets = build_set_valued_targets(
         {"mean_prob": teacher_prob},
@@ -131,7 +133,9 @@ def test_r6_rank_negative_keeps_unreliable_pixels_useful_without_sam_veto():
             "foreground_classes": [1, 2],
             "disable_bg_if_no_fg": True,
             "empty_candidate_topk_foreground": 1,
-            "safe_negative_rank_low": 1,
+            "min_empty_foreground_score": 0.02,
+            "safe_negative_rank_low": 2,
+            "safe_negative_sam_threshold": 0.30,
             "safe_negative_max_prob": 0.35,
         },
     )

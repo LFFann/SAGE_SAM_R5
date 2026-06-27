@@ -133,13 +133,13 @@ pseudo:
   boundary_weight: 0.05
   rank_margin: 0.5
   safe_negative_threshold: 0.05
-  safe_negative_sam_threshold: 0.05
-  safe_negative_rank_low: 1
+  safe_negative_sam_threshold: 0.30
+  safe_negative_rank_low: 2
   safe_negative_rank_high: 2
   safe_negative_max_prob: 0.40
   max_candidate_set_size: 2
-  empty_candidate_topk_foreground: 2
-  min_empty_foreground_score: 0.000001
+  empty_candidate_topk_foreground: 1
+  min_empty_foreground_score: 0.02
   min_teacher_confidence: 0.55
   min_sam_confidence: 0.55
   min_foreground_score: 0.02

@@ -2,8 +2,13 @@ from __future__ import annotations
 
 import torch
 
+from r6.losses.foreground_safe_kd import foreground_safe_sam_kd_loss
 from r6.ssl.correlation_propagation import correlation_propagation_loss, propagate_correlation_targets
-from r6.ssl.foreground_correlation_locality import build_masked_locality_view, expand_targets_with_correlation
+from r6.ssl.foreground_correlation_locality import (
+    build_foreground_structure_mask,
+    build_masked_locality_view,
+    expand_targets_with_correlation,
+)
 
 
 def test_correlation_propagation_returns_dense_training_signal():
@@ -64,6 +69,55 @@ def test_masked_locality_view_no_seed_is_noop():
 
     assert torch.equal(masked, image)
     assert stats["masked_locality_ratio"] == 0.0
+
+
+def test_foreground_structure_mask_uses_candidate_fuzzy_and_structure_not_only_seed():
+    candidate = torch.zeros(1, 3, 3, 3, dtype=torch.bool)
+    candidate[:, 1, 0, 0] = True
+    fuzzy = torch.zeros(1, 3, 3, dtype=torch.bool)
+    fuzzy[:, 1, 1] = True
+    structure = torch.zeros(1, 3, 3, dtype=torch.bool)
+    structure[:, 2, 2] = True
+    hard_seed = torch.zeros(1, 3, 3, dtype=torch.bool)
+
+    mask = build_foreground_structure_mask(
+        {
+            "candidate_set": candidate,
+            "foreground_seed_mask": hard_seed,
+            "fuzzy_region": fuzzy,
+            "structure_gate": structure,
+        }
+    )
+
+    assert mask[:, 0, 0].all()
+    assert mask[:, 1, 1].all()
+    assert mask[:, 2, 2].all()
+    assert int(mask.sum()) == 3
+
+
+def test_sam_kd_gate_can_use_structure_without_hard_seed():
+    targets = {
+        "candidate_set": torch.zeros(1, 3, 2, 2, dtype=torch.bool),
+        "foreground_seed_mask": torch.zeros(1, 2, 2, dtype=torch.bool),
+        "fuzzy_region": torch.zeros(1, 2, 2, dtype=torch.bool),
+        "structure_gate": torch.ones(1, 2, 2, dtype=torch.bool),
+        "structure_weight": torch.ones(1, 2, 2),
+    }
+    foreground_mask = build_foreground_structure_mask(targets)
+    gate = targets["structure_weight"] * foreground_mask.float()
+    logits = torch.zeros(1, 3, 2, 2)
+    sam_prob = torch.tensor(
+        [[
+            [[0.01, 0.01], [0.01, 0.01]],
+            [[0.98, 0.98], [0.98, 0.98]],
+            [[0.01, 0.01], [0.01, 0.01]],
+        ]]
+    )
+
+    loss = foreground_safe_sam_kd_loss(logits, sam_prob, foreground_mask=foreground_mask, gate=gate)
+
+    assert gate.sum() > 0
+    assert loss > 0
 
 
 def test_correlation_expands_foreground_candidate_set():

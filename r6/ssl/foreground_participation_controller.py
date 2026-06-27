@@ -160,8 +160,25 @@ def apply_foreground_budget(
 
     kept_background = singleton_mask & (singleton_label == 0)
     candidate_set[:, 0] = candidate_set[:, 0] & kept_background
-    ambiguous_mask = ambiguous_mask & (candidate_set.sum(dim=1) > 0)
     empty_candidate = candidate_set.sum(dim=1) == 0
+    empty_recovered = torch.zeros_like(singleton_mask, dtype=torch.bool)
+    if empty_candidate.any() and num_classes > 1:
+        min_empty_fg = float(config.get("min_empty_foreground_score", config.get("min_foreground_score", 0.02)))
+        fg_score, fg_idx = foreground_score[:, 1:].max(dim=1)
+        has_fg_hint = empty_candidate & (fg_score >= min_empty_fg)
+        for cls in fg_classes:
+            if not (0 < cls < num_classes):
+                continue
+            promote = has_fg_hint & ((fg_idx + 1) == cls)
+            if int(promote.sum()) == 0:
+                continue
+            candidate_set[:, cls] = candidate_set[:, cls] | promote
+            ambiguous_mask = ambiguous_mask | promote
+            singleton_mask = singleton_mask & ~promote
+            promoted_any = promoted_any | promote
+            empty_recovered = empty_recovered | promote
+        empty_candidate = candidate_set.sum(dim=1) == 0
+    ambiguous_mask = ambiguous_mask & (candidate_set.sum(dim=1) > 0)
 
     hard_fg_ratios = {}
     soft_fg_ratios = {}
@@ -180,6 +197,7 @@ def apply_foreground_budget(
         "fg_budget_violation": float(fg_budget_violation),
         "emergency_mode": 1.0 if emergency_mode else 0.0,
         "foreground_promoted_ratio": float(promoted_any.float().mean().detach()),
+        "empty_candidate_recovered_ratio": float(empty_recovered.float().mean().detach()),
         "collapse_sentinel_active": 1.0 if collapse_active else 0.0,
         "collapse_disabled_background": 1.0 if collapse_disable_background else 0.0,
         "collapse_bg_hard_ratio_before": bg_ratio_before,

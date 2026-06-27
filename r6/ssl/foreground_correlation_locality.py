@@ -6,6 +6,37 @@ import torch.nn.functional as F
 from .correlation_propagation import correlation_propagation_loss, propagate_correlation_targets
 
 
+def _as_spatial_bool(value: torch.Tensor | None) -> torch.Tensor | None:
+    if value is None:
+        return None
+    out = value.bool()
+    if out.ndim == 4:
+        out = out.any(dim=1)
+    return out
+
+
+def build_foreground_structure_mask(targets: dict) -> torch.Tensor | None:
+    """Shared broad foreground route for SAM KD, locality, and propagation.
+
+    Hard foreground seeds are intentionally only one possible source.  Candidate
+    foreground, fuzzy set-valued pixels, and SAM structure gates must also keep
+    the structural training path alive.
+    """
+
+    seed = None
+    candidate_set = targets.get("candidate_set")
+    if candidate_set is not None and candidate_set.ndim == 4 and candidate_set.shape[1] > 1:
+        seed = candidate_set[:, 1:].any(dim=1).bool()
+
+    for key in ("foreground_seed_mask", "fuzzy_region", "structure_gate"):
+        value = _as_spatial_bool(targets.get(key))
+        if value is None:
+            continue
+        seed = value if seed is None else (seed | value.to(device=seed.device))
+
+    return seed
+
+
 @torch.no_grad()
 def propagate_foreground_correlation_targets(
     feature_fusion: torch.Tensor,
@@ -20,17 +51,7 @@ def propagate_foreground_correlation_targets(
     prob_fg = prob_fusion.detach().clone()
     if prob_fg.shape[1] > 1:
         prob_fg[:, 0] = 0.0
-    candidate_set = targets.get("candidate_set")
-    candidate_fg = None
-    if candidate_set is not None and candidate_set.shape[1] > 1:
-        candidate_fg = candidate_set[:, 1:].any(dim=1)
-    seed = targets.get("sam_region_gate")
-    if seed is not None and candidate_fg is not None:
-        seed = seed | candidate_fg
-    elif seed is None:
-        seed = candidate_fg
-    if seed is None:
-        seed = targets.get("foreground_seed_mask")
+    seed = build_foreground_structure_mask(targets)
     if seed is None:
         seed = targets.get("singleton_mask", None)
     propagated = propagate_correlation_targets(

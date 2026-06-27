@@ -44,6 +44,7 @@ from r6.models.promptable_sam_mentor import PromptableSAMMentor
 from r6.models.real_sam_wrapper import RealSAMWrapper
 from r6.ssl.adaptive_ultrasound_augmentation import make_weak_strong_views
 from r6.ssl.foreground_correlation_locality import (
+    build_foreground_structure_mask,
     build_masked_locality_view,
     expand_targets_with_correlation,
     foreground_correlation_loss,
@@ -474,6 +475,8 @@ class SAGESAMR6Trainer:
             loss_corr = x_l.new_tensor(0.0)
             loss_local = x_l.new_tensor(0.0)
             loss_conflict = x_l.new_tensor(0.0)
+            sam_kd_gate_ratio = 0.0
+            sam_kd_gate_weight_mean = 0.0
             masked_locality_stats = {"masked_locality_ratio": 0.0, "foreground_masked_ratio": 0.0}
             if self.use_sam and self.mentor is not None:
                 sam_l = self.mentor.forward_labeled(x_l, y_l)
@@ -520,9 +523,10 @@ class SAGESAMR6Trainer:
             )
             if stage_weights["locality"] > 0.0 and float(pseudo_cfg.get("locality_weight", 0.0)) > 0.0:
                 locality_cfg = self.config.get("locality", {})
+                locality_seed = build_foreground_structure_mask(targets)
                 x_u_local, masked_locality_stats = build_masked_locality_view(
                     x_u_w,
-                    targets.get("sam_region_gate", targets.get("foreground_seed_mask")),
+                    locality_seed,
                     mask_ratio=locality_cfg.get("mask_ratio", pseudo_cfg.get("locality_mask_ratio", 0.30)),
                     patch_size=locality_cfg.get("patch_size", pseudo_cfg.get("locality_patch_size", 16)),
                     fill=locality_cfg.get("fill", "mean"),
@@ -532,8 +536,14 @@ class SAGESAMR6Trainer:
                     loss_local = masked_locality_proxy_loss(out_local["logits"], targets, pseudo_cfg.get("rank_margin", 0.5))
 
             if self.use_sam and sam_u.get("valid"):
-                foreground_mask = targets.get("sam_region_gate", targets["sam_train_gate"]).bool()
-                sam_gate_weight = targets["sam_weight"] * foreground_mask.float()
+                foreground_mask = build_foreground_structure_mask(targets)
+                if foreground_mask is None:
+                    foreground_mask = targets.get("sam_region_gate", targets["sam_train_gate"]).bool()
+                foreground_mask = foreground_mask.to(device=out_s1["logits"].device).bool()
+                sam_base_weight = targets.get("structure_weight", targets["sam_weight"]).to(device=foreground_mask.device).float()
+                sam_gate_weight = sam_base_weight * foreground_mask.float()
+                sam_kd_gate_ratio = float(foreground_mask.float().mean().detach())
+                sam_kd_gate_weight_mean = float(sam_gate_weight.mean().detach())
                 sam_utility_value = float((sam_u["sam_prob"].detach()[:, 1:] * targets["teacher_only_soft_target"][:, 1:]).sum(dim=1).mean())
                 self.sam_utility.update(sam_utility_value)
                 loss_kd = foreground_safe_sam_kd_loss(
@@ -550,10 +560,11 @@ class SAGESAMR6Trainer:
                     gate=sam_gate_weight,
                 )
                 if structure_cfg.get("use_online_relation", False):
+                    relation_gate = targets["structure_gate"].to(device=foreground_mask.device).bool() & foreground_mask
                     loss_relation = online_sam_student_relation_loss(
                         out_s1["bottleneck"],
                         sam_u.get("sam_embedding"),
-                        gate=targets["structure_gate"] & targets.get("sam_region_gate", targets["sam_train_gate"]),
+                        gate=relation_gate,
                         boundary=sam_u.get("sam_boundary"),
                         topk=structure_cfg.get("online_topk", 8),
                         resolution=structure_cfg.get("relation_resolution", 16),
@@ -642,6 +653,8 @@ class SAGESAMR6Trainer:
             "sam_utility_disabled": 1.0 if self.sam_utility.disabled else 0.0,
             "fast_slow_agreement": float(teacher_out["agreement"].detach()),
             "sam_valid_ratio": 1.0 if sam_u.get("valid") else 0.0,
+            "sam_kd_gate_ratio": sam_kd_gate_ratio,
+            "sam_kd_gate_weight_mean": sam_kd_gate_weight_mean,
             "prompt_quality": prompt_quality,
             "sam_adapter_grad_norm": sam_grad_norm,
             "optimizer_step": 1.0 if (update and step_optimizer) else 0.0,

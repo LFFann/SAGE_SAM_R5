@@ -9,8 +9,8 @@ R6 keeps the single-loop dual-fusion deploy student, but changes SAM's role. SAM
 - `r6/ssl/foreground_safe_target_builder.py`: builds calibrated candidate label sets. Empty candidates are not silently converted to background; weak foreground evidence is recovered as top-k foreground candidates or left ignored.
 - `r6/ssl/foreground_participation_controller.py`: enforces foreground participation, caps hard background supervision, and uses a collapse sentinel to force foreground candidates while disabling background hard CE when foreground participation collapses.
 - `r6/losses/tri_state_pseudo_loss.py`: trains singleton sets, fuzzy candidate sets, rank separation, and U2PL-style probability-rank negative labels.
-- `r6/ssl/foreground_correlation_locality.py`: uses SAM/candidate foreground regions as propagation seeds and writes propagated foreground labels back into the candidate set before SSL losses.
-- `r6/engine/trainer.py`: SAM KD, SAM unsupervised consistency, relation, and locality use `sam_region_gate`, which includes candidate foreground, fuzzy, conflict, propagated, and uncertain boundary regions instead of only hard foreground seeds.
+- `r6/ssl/foreground_correlation_locality.py`: uses a broad foreground structure mask (`foreground_seed | candidate_foreground | fuzzy_region | structure_gate`) as propagation seeds and writes propagated foreground labels back into the candidate set before SSL losses.
+- `r6/engine/trainer.py`: SAM KD, SAM unsupervised consistency, relation, and locality use the same broad foreground structure mask and `structure_weight`, so SAM training no longer depends on hard foreground seeds being present.
 
 ## Training Schedule
 
@@ -90,9 +90,12 @@ ambiguous_ratio
 empty_candidate_ratio
 candidate_foreground_ratio
 foreground_propagated_ratio
+empty_candidate_recovered_ratio
 safe_negative_pixel_ratio
 fast_slow_agreement
 sam_train_gate_ratio
+sam_kd_gate_ratio
+sam_kd_gate_weight_mean
 sam_foreground_support_ratio
 masked_locality_ratio
 foreground_masked_ratio
