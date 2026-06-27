@@ -33,7 +33,11 @@ def test_dual_fusion_export_round_trip(tmp_path):
         mentor=None,
         config=cfg,
         best_metrics={},
+        calibration_update_count=3,
     )
+    full_payload = safe_load(ckpt)
+    assert full_payload["calibration_update_count"] == 3
+
     export_deploy_payload(ckpt, deploy)
     payload = safe_load(deploy)
     loaded = build_deploy_model(minimal_deploy_config(payload))

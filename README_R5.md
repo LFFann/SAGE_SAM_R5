@@ -10,7 +10,7 @@ R5 keeps the R4 single-loop training and dual-fusion deploy student, but changes
 - `r5/ssl/foreground_participation_controller.py`: enforces minimum foreground participation, caps hard background supervision, and triggers emergency mode when foreground participation collapses.
 - `r5/losses/tri_state_pseudo_loss.py`: uses hard foreground/background-after-cap, fuzzy candidate positives, rank loss, and safe negative loss.
 - `r5/losses/foreground_safe_kd.py`: SAM KD and SAM unsupervised consistency run only on calibrated foreground pixels.
-- `r5/ssl/foreground_correlation_locality.py`: correlation/locality losses propagate foreground candidates only and never convert foreground candidates into background hard labels.
+- `r5/ssl/foreground_correlation_locality.py`: correlation/locality losses propagate foreground candidates only and build a real foreground-seed masked view for locality consistency.
 
 ## Training Schedule
 
@@ -27,7 +27,7 @@ R5 keeps the R4 single-loop training and dual-fusion deploy student, but changes
 
 3000 - 6000 iter:
   foreground-only correlation propagation
-  masked-locality proxy via strong masked views
+  masked-locality proxy via an extra foreground-seed masked view
 
 6000+ iter:
   self-reliance decay for SAM SSL/KD
@@ -88,6 +88,8 @@ ambiguous_ratio
 safe_negative_pixel_ratio
 fast_slow_agreement
 sam_foreground_support_ratio
+masked_locality_ratio
+foreground_masked_ratio
 emergency_mode
 ```
 

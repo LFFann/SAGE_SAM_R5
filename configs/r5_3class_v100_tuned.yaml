@@ -152,7 +152,7 @@ losses:
   fusion_sup_weight: 1.0
 
 structure:
-  use_online_relation: true
+  use_online_relation: false
   online_topk: 8
   relation_resolution: 16
   relation_temperature: 0.2
@@ -162,6 +162,11 @@ structure:
   correlation_temperature: 0.2
   correlation_min_weight: 0.15
   use_cache: false
+
+locality:
+  mask_ratio: 0.30
+  patch_size: 16
+  fill: mean
 
 augmentation:
   weak:

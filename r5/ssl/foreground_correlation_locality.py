@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import torch
+import torch.nn.functional as F
 
 from .correlation_propagation import correlation_propagation_loss, propagate_correlation_targets
 
@@ -42,8 +43,61 @@ def foreground_correlation_loss(logits: torch.Tensor, propagated: dict):
     return correlation_propagation_loss(logits, propagated)
 
 
+@torch.no_grad()
+def build_masked_locality_view(
+    images: torch.Tensor,
+    foreground_seed_mask: torch.Tensor | None,
+    mask_ratio: float = 0.30,
+    patch_size: int = 16,
+    fill: str = "mean",
+) -> tuple[torch.Tensor, dict]:
+    """Mask a random subset of reliable foreground-local patches.
+
+    This is intentionally target-aware: the mask is sampled only from foreground
+    seed patches so the auxiliary task asks the model to recover calibrated
+    local structure instead of hiding already-unreliable background regions.
+    """
+
+    if foreground_seed_mask is None:
+        return images, {"masked_locality_ratio": 0.0, "foreground_masked_ratio": 0.0}
+    if images.ndim != 4:
+        raise ValueError(f"images must be BCHW, got {tuple(images.shape)}")
+    bsz, _, height, width = images.shape
+    fg = foreground_seed_mask.to(device=images.device).bool()
+    if fg.ndim == 4:
+        fg = fg.any(dim=1)
+    if fg.shape[-2:] != (height, width):
+        fg = F.interpolate(fg.float().unsqueeze(1), size=(height, width), mode="nearest").squeeze(1).bool()
+    if int(fg.sum()) == 0 or mask_ratio <= 0.0:
+        return images, {"masked_locality_ratio": 0.0, "foreground_masked_ratio": 0.0}
+
+    patch = max(1, int(patch_size))
+    pooled = F.max_pool2d(fg.float().unsqueeze(1), kernel_size=patch, stride=patch, ceil_mode=True).squeeze(1).bool()
+    rand = torch.rand_like(pooled.float())
+    selected_low = pooled & (rand < float(mask_ratio))
+    if int(selected_low.sum()) == 0:
+        for bi in range(bsz):
+            eligible = pooled[bi].flatten().nonzero(as_tuple=False).squeeze(1)
+            if eligible.numel() > 0:
+                selected_low[bi].flatten()[eligible[torch.randint(eligible.numel(), (1,), device=eligible.device)]] = True
+    selected = F.interpolate(selected_low.float().unsqueeze(1), size=(height, width), mode="nearest").squeeze(1).bool()
+    selected = selected & fg
+    if int(selected.sum()) == 0:
+        return images, {"masked_locality_ratio": 0.0, "foreground_masked_ratio": 0.0}
+
+    if fill == "zero":
+        fill_value = torch.zeros_like(images)
+    else:
+        fill_value = images.mean(dim=(2, 3), keepdim=True).expand_as(images)
+    masked = torch.where(selected.unsqueeze(1), fill_value, images)
+    return masked, {
+        "masked_locality_ratio": float(selected.float().mean().detach()),
+        "foreground_masked_ratio": float((selected.float().sum() / fg.float().sum().clamp_min(1.0)).detach()),
+    }
+
+
 def masked_locality_proxy_loss(logits: torch.Tensor, targets: dict, rank_margin: float = 0.5):
     from r5.losses.tri_state_pseudo_loss import tri_state_pseudo_supervision_loss
 
     losses = tri_state_pseudo_supervision_loss(logits, targets, rank_margin)
-    return losses["loss_fuzzy"] + losses["loss_set"]
+    return losses["loss_hard_fg"] + losses["loss_fuzzy"] + losses["loss_set"]

@@ -44,6 +44,7 @@ from r5.models.promptable_sam_mentor import PromptableSAMMentor
 from r5.models.real_sam_wrapper import RealSAMWrapper
 from r5.ssl.adaptive_ultrasound_augmentation import make_weak_strong_views
 from r5.ssl.foreground_correlation_locality import (
+    build_masked_locality_view,
     foreground_correlation_loss,
     masked_locality_proxy_loss,
     propagate_foreground_correlation_targets,
@@ -189,6 +190,7 @@ class SAGESAMR5Trainer:
         self.best_metrics = {"avg_dice": -1.0, "avg_hd95": float("inf")}
         self.start_iteration = 0
         self.calibration_iter = None
+        self.calibration_update_count = 0
         self._log_trainability()
         self._build_data()
 
@@ -317,6 +319,7 @@ class SAGESAMR5Trainer:
                 self.logger.warning("mentor_resume_report=%s", report)
         if payload.get("best_metrics") is not None:
             self.best_metrics = payload["best_metrics"]
+        self.calibration_update_count = int(payload.get("calibration_update_count", self.calibration_update_count))
         self.start_iteration = int(payload.get("iteration", 0))
         append_jsonl(self.output_dir / "diagnostics.jsonl", {"event": "checkpoint_resumed", "iteration": self.start_iteration, "path": str(checkpoint_path)})
         self.logger.info("resumed checkpoint=%s iteration=%d", checkpoint_path, self.start_iteration)
@@ -470,6 +473,7 @@ class SAGESAMR5Trainer:
             loss_corr = x_l.new_tensor(0.0)
             loss_local = x_l.new_tensor(0.0)
             loss_conflict = x_l.new_tensor(0.0)
+            masked_locality_stats = {"masked_locality_ratio": 0.0, "foreground_masked_ratio": 0.0}
             if self.use_sam and self.mentor is not None:
                 sam_l = self.mentor.forward_labeled(x_l, y_l)
                 loss_sam_sup = sam_ce_dice_loss(sam_l["sam_prob"], y_l, self.num_classes, self.ignore_index)
@@ -494,7 +498,17 @@ class SAGESAMR5Trainer:
                 + float(loss_cfg.get("branch_ssl_weight", 0.5)) * branch_ssl
             )
             if stage_weights["locality"] > 0.0 and float(pseudo_cfg.get("locality_weight", 0.0)) > 0.0:
-                loss_local = masked_locality_proxy_loss(out_s2["logits"], targets, pseudo_cfg.get("rank_margin", 0.5))
+                locality_cfg = self.config.get("locality", {})
+                x_u_local, masked_locality_stats = build_masked_locality_view(
+                    x_u_w,
+                    targets.get("foreground_seed_mask"),
+                    mask_ratio=locality_cfg.get("mask_ratio", pseudo_cfg.get("locality_mask_ratio", 0.30)),
+                    patch_size=locality_cfg.get("patch_size", pseudo_cfg.get("locality_patch_size", 16)),
+                    fill=locality_cfg.get("fill", "mean"),
+                )
+                if masked_locality_stats["masked_locality_ratio"] > 0.0:
+                    out_local = self.student(x_u_local, return_features=True, feature_dropout="complementary")
+                    loss_local = masked_locality_proxy_loss(out_local["logits"], targets, pseudo_cfg.get("rank_margin", 0.5))
             if stage_weights["correlation"] > 0.0 and float(pseudo_cfg.get("correlation_weight", 0.0)) > 0.0 and out_s1.get("fusion_feature") is not None:
                 sam_shape = targets.get("sam_boundary")
                 if sam_shape is None and sam_u.get("valid"):
@@ -529,7 +543,7 @@ class SAGESAMR5Trainer:
                     foreground_mask=foreground_mask,
                     gate=sam_gate_weight,
                 )
-                if structure_cfg.get("use_online_relation", True):
+                if structure_cfg.get("use_online_relation", False):
                     loss_relation = online_sam_student_relation_loss(
                         out_s1["bottleneck"],
                         sam_u.get("sam_embedding"),
@@ -604,6 +618,8 @@ class SAGESAMR5Trainer:
             "loss_conflict_review": float(loss_conflict.detach()),
             "loss_correlation": float(loss_corr.detach()),
             "loss_locality": float(loss_local.detach()),
+            "masked_locality_ratio": float(masked_locality_stats["masked_locality_ratio"]),
+            "foreground_masked_ratio": float(masked_locality_stats["foreground_masked_ratio"]),
             "loss_relation": float(loss_relation.detach()),
             "loss_boundary": float(loss_boundary.detach()),
             "loss_sam_sup": float(loss_sam_sup.detach()),
@@ -720,6 +736,11 @@ class SAGESAMR5Trainer:
         if out_c is None or y_c is None or not sam_c.get("valid"):
             return
         student_prob_l = torch.softmax(out_c["logits"].detach(), dim=1)
+        num_classes = int(getattr(self, "num_classes", student_prob_l.shape[1]))
+        class_pixels = {
+            f"calibration_pixels_class{cls}": int((y_c.detach() == cls).sum().item())
+            for cls in range(num_classes)
+        }
         self.calibrator.update_from_batch(
             teacher_prob=student_prob_l,
             sam_prob=sam_c["sam_prob"].detach(),
@@ -727,12 +748,24 @@ class SAGESAMR5Trainer:
             prompt_quality=sam_c.get("prompt_quality"),
             gt=y_c.detach(),
         )
+        if not hasattr(self, "calibration_update_count"):
+            self.calibration_update_count = 0
+        self.calibration_update_count += 1
+        flat_thresholds = {}
+        for cls in range(num_classes):
+            flat_thresholds[f"teacher_q_class{cls}"] = float(self.calibrator.teacher_q[cls])
+            flat_thresholds[f"sam_q_class{cls}"] = float(self.calibrator.sam_q[cls])
+            flat_thresholds[f"sam_iou_q_class{cls}"] = float(self.calibrator.sam_iou_q[cls])
+            flat_thresholds[f"prompt_stability_q_class{cls}"] = float(self.calibrator.prompt_stability_q[cls])
         append_jsonl(
             self.output_dir / "diagnostics.jsonl",
             {
                 "event": event_name,
                 "iteration": iteration,
                 "calibration_batch_size": int(y_c.shape[0]),
+                "calibration_update_count": int(self.calibration_update_count),
+                **class_pixels,
+                **flat_thresholds,
                 "teacher_q": self.calibrator.teacher_q.tolist(),
                 "sam_q": self.calibrator.sam_q.tolist(),
                 "sam_iou_q": self.calibrator.sam_iou_q.tolist(),
@@ -766,6 +799,7 @@ class SAGESAMR5Trainer:
             mentor=self.mentor,
             config=self.config,
             best_metrics=self.best_metrics,
+            calibration_update_count=self.calibration_update_count,
         )
         append_jsonl(self.output_dir / "diagnostics.jsonl", {"event": "checkpoint_saved", "iteration": iteration, "path": str(latest)})
         if metrics["avg_dice"] >= self.best_metrics.get("avg_dice", -1):
@@ -783,6 +817,7 @@ class SAGESAMR5Trainer:
                 mentor=self.mentor,
                 config=self.config,
                 best_metrics=self.best_metrics,
+                calibration_update_count=self.calibration_update_count,
             )
             append_jsonl(self.output_dir / "diagnostics.jsonl", {"event": "best_updated", "metric": "avg_dice", "iteration": iteration})
         hd = metrics.get("avg_hd95", float("inf"))
@@ -802,6 +837,7 @@ class SAGESAMR5Trainer:
                 mentor=self.mentor,
                 config=self.config,
                 best_metrics=self.best_metrics,
+                calibration_update_count=self.calibration_update_count,
             )
         self.logger.info("val iter=%d avg_dice=%.4f avg_iou=%.4f", iteration, metrics["avg_dice"], metrics["avg_iou"])
         return metrics

@@ -68,7 +68,7 @@ def build_foreground_safe_targets(teacher_out: dict, sam_out: dict | None, calib
                 & (foreground_score[:, cls] >= min_fg_score)
             )
         else:
-            reliable_fg[:, cls] = teacher_prob[:, cls] >= torch.maximum(teacher_thresh[cls], teacher_prob.new_tensor(min_teacher_conf))
+            reliable_fg[:, cls] = teacher_prob[:, cls] >= min_teacher_conf
 
     reliable_fg_any = reliable_fg[:, 1:].any(dim=1) if num_classes > 1 else torch.zeros((bsz, height, width), device=device, dtype=torch.bool)
     fg_score_max, fg_label = foreground_score[:, 1:].max(dim=1) if num_classes > 1 else (teacher_prob.new_zeros((bsz, height, width)), torch.zeros((bsz, height, width), device=device, dtype=torch.long))

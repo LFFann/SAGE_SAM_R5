@@ -13,7 +13,22 @@ def safe_load(path: str | Path, map_location="cpu") -> dict[str, Any]:
         return torch.load(path, map_location=map_location)
 
 
-def save_checkpoint(path, *, iteration, student, fast_teacher, slow_teacher, optimizer, scaler, calibrator, sam_utility, config, best_metrics, mentor=None):
+def save_checkpoint(
+    path,
+    *,
+    iteration,
+    student,
+    fast_teacher,
+    slow_teacher,
+    optimizer,
+    scaler,
+    calibrator,
+    sam_utility,
+    config,
+    best_metrics,
+    mentor=None,
+    calibration_update_count: int = 0,
+):
     mentor_state = None
     if mentor is not None:
         mentor_state = mentor.trainable_state_dict() if hasattr(mentor, "trainable_state_dict") else mentor.state_dict()
@@ -30,6 +45,7 @@ def save_checkpoint(path, *, iteration, student, fast_teacher, slow_teacher, opt
         "mentor": mentor_state,
         "config": config,
         "best_metrics": best_metrics,
+        "calibration_update_count": int(calibration_update_count),
     }
     path = Path(path)
     path.parent.mkdir(parents=True, exist_ok=True)
