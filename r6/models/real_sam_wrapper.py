@@ -33,9 +33,15 @@ def _temporary_knowsam_model_package(knowsam_root: Path):
 
 def _find_local_r6_root() -> Path | None:
     here = Path(__file__).resolve()
-    for root in [here.parents[3], Path.cwd() / "SAGE_SAM_R6"]:
-        if (root / "Model" / "sam" / "__init__.py").exists():
-            return root
+    candidates = [here.parent, *here.parents, Path.cwd(), *Path.cwd().parents]
+    seen = set()
+    for root in candidates:
+        resolved = root.resolve()
+        if resolved in seen:
+            continue
+        seen.add(resolved)
+        if (resolved / "Model" / "sam" / "__init__.py").exists():
+            return resolved
     return None
 
 
