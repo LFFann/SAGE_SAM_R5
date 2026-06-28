@@ -67,15 +67,87 @@ python tools/validate_dataset.py --config configs/r6_3class_v100_tuned.yaml
 python tools/verify_real_sam.py --config configs/r6_3class_v100_tuned.yaml
 ```
 
+## V100 Server Settings
+
+The server-tuned config is `configs/r6_3class_v100_tuned.yaml`.
+
+```text
+data.root: /root/autodl-tmp/echoData
+data.dataset_name: 260513_data_labeled30pct
+sam.checkpoint: /root/autodl-tmp/sam_vit_b_01ec64.pth
+train.device / sam.device: cuda
+data.image_size: 256
+sam.image_size: 1024
+batch_size_labeled / batch_size_unlabeled: 4 / 4
+gradient_accumulation: 2
+effective labeled / unlabeled batch: 8 / 8
+num_workers: 8
+amp: true
+lr / weight_decay: 3e-4 / 1e-4
+max_iterations: 8000
+warmup / grounding / correlation / self-reliance: 1200 / 800 / 2000 / 5000
+```
+
+The first fallback for V100 memory pressure is to reduce
+`train.batch_size_labeled` and `train.batch_size_unlabeled` from `4/4` to
+`2/2` while keeping `gradient_accumulation: 2`. Keep `sam.image_size=1024`
+unless real SAM verification or memory pressure proves it is necessary to
+lower it.
+
 V100 tuned training:
 
 ```bash
 bash scripts/train_r6_v100_tuned.sh
 ```
 
+Short diagnostic training before a full run:
+
+```bash
+bash scripts/diagnose_r6_short.sh
+```
+
+This runs dataset validation, real-SAM verification, a 1500-iteration diagnostic
+run by default, and then checks `metrics.jsonl` with:
+
+```bash
+python tools/check_r6_diagnostics.py \
+  --output-dir outputs/SAGE_SAM_R6_Diagnostic_1500 \
+  --config outputs/SAGE_SAM_R6_Diagnostic_1500/resolved_config.yaml
+```
+
+Override the diagnostic length or output folder with environment variables:
+
+```bash
+MAX_ITERATIONS=1500 OUTPUT_DIR=outputs/SAGE_SAM_R6_Diagnostic_1500 bash scripts/diagnose_r6_short.sh
+```
+
+Full V100 training with explicit output:
+
+```bash
+CONFIG=configs/r6_3class_v100_tuned.yaml \
+OUTPUT_DIR=outputs/SAGE_SAM_R6_3Class_V100_Tuned \
+bash scripts/train_r6_v100_tuned.sh
+```
+
+Resume training:
+
+```bash
+RESUME=outputs/SAGE_SAM_R6_3Class_V100_Tuned/checkpoints/latest.pth \
+OUTPUT_DIR=outputs/SAGE_SAM_R6_3Class_V100_Tuned \
+bash scripts/train_r6_v100_tuned.sh
+```
+
 Validation/test/export after training:
 
 ```bash
+bash scripts/test_r6_v100_tuned.sh
+```
+
+Or with an explicit checkpoint:
+
+```bash
+OUTPUT_DIR=outputs/SAGE_SAM_R6_3Class_V100_Tuned \
+CHECKPOINT=outputs/SAGE_SAM_R6_3Class_V100_Tuned/checkpoints/best_val_dice.pth \
 bash scripts/test_r6_v100_tuned.sh
 ```
 
@@ -106,3 +178,9 @@ collapse_forced_fg_ratio
 ```
 
 R6 is healthy only if foreground participation remains nonzero after the grounding stage, `sam_train_gate_ratio` does not collapse to zero, and `background_hard_ratio` stays capped instead of saturating the unsupervised loss.
+
+For a 500-1500 iteration diagnostic run, `tools/check_r6_diagnostics.py` fails
+the run if candidate foreground, safe negative supervision, SAM KD gate/weight,
+or SAM KD loss remain zero when SAM is enabled. Correlation and locality checks
+are automatically skipped before the correlation stage and enabled after the
+configured iteration threshold.
